@@ -1,0 +1,8 @@
+{
+  "name": "Top Task Bar",
+  "description": "Implements a small task bar in the standard GNOME top bar",
+  "uuid": "toptaskbar@lucakr.github.io",
+  "shell-version": [
+    "40"
+  ]
+}
