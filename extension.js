@@ -1,4 +1,4 @@
-/* extension.js
+/* shortcuts.js
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -20,100 +20,105 @@
 
 const GETTEXT_DOMAIN = 'toptaskbar@lucakr.github.io';
 
-const { GObject, St } = imports.gi;
+const { GObject, St, Shell, Clutter } = imports.gi;
 
 const Gettext = imports.gettext.domain(GETTEXT_DOMAIN);
 const _ = Gettext.gettext;
 
-const ExtensionUtils = imports.misc.extensionUtils;
 const Main = imports.ui.main;
+const ExtensionUtils = imports.misc.extensionUtils;
+const Me = ExtensionUtils.getCurrentExtension();
+const Actions = Me.imports.actions;
+const WM = global.workspace_manager;
 const PanelMenu = imports.ui.panelMenu;
 const PopupMenu = imports.ui.popupMenu;
-const AppFavorites = imports.ui.appFavorites;
 
-var AppGridButton = GObject.registerClass(
-class AppGridButton extends PanelMenu.Button {
-    _init() {
-        super._init(0.0, 'AppGridButton');
+// var WorkspaceManager = GObject.registerClass(
+// class WorkspaceManager extends PanelMenu.
+// )
+
+var WorkspaceButton = GObject.registerClass(
+class WorkspaceButton extends PanelMenu.Button {
+    _init(workspace_index) {
+        super._init(0.0, 'WorkspaceButton');
+
+        // tracker for windows
+		this.window_tracker = Shell.WindowTracker.get_default();
         
-        this.app_grid_button = new St.BoxLayout({
-            visible: true, 
+        this.ws_button = new St.BoxLayout({
+            visible: true,
             reactive: true, 
             can_focus: true, 
             track_hover: true
         });
 
-        this.app_grid_button.icon = new St.Icon({
-            icon_name: 'view-app-grid-symbolic', 
-            style_class: 'system-status-icon'
-        });
+        this.ws = WM.get_workspace_by_index(workspace_index);
 
-        this.app_grid_button.add_child(this.app_grid_button.icon);
-        this.app_grid_button.connect('button-release-event', this._show_apps_page.bind(this));
+        this.windows_changed = this.window_tracker.connect('tracked-windows-changed', this._display_windows.bind(this));
+		        
+        this.add_child(this.ws_button);
+
+        this._display_windows();
         
-        this.add_child(this.app_grid_button);
     }
 
-    _show_apps_page() {
-        if (Main.overview.visible) {
-            Main.overview.hide();
-        } else {
-            Main.overview.showApps();
+    vfunc_event(event) {
+        if(event.get_button() == 1 &&
+           (event.type() == Clutter.EventType.TOUCH_BEGIN ||
+            event.type() == Clutter.EventType.BUTTON_PRESS)) {
+
+            if(this.menu && (this.menu.isOpen || (WM.get_active_workspace() == this.ws))) {
+                this.menu.toggle();
+            } else {
+                this.ws.activate(global.get_current_time());
+		        Main.overview.hide();
+            }
         }
-    }
-    
-    _destroy() {
-        super.destroy();
-    }
-});
 
-var FavouritesMenu = GObject.registerClass(
-class FavouritesMenu extends PanelMenu.Button {
-    _init() {
-        super._init(0.0, 'FavouritesMenu');
-        
-        this.favourites_changed_connection = AppFavorites.getAppFavorites().connect('changed', this._display_favourites.bind(this));
-        
-        this.favourites_menu_button = new St.BoxLayout({
-            visible: true, 
-            reactive: true, 
-            can_focus: true, 
-            track_hover: true
-        });
-        this.favourites_menu_icon = new St.Icon({
-            icon_name: 'starred-symbolic', 
-            style_class: 'system-status-icon'
-        });
+        if (this.menu &&
+            event.get_button() == 3 &&
+            (event.type() == Clutter.EventType.TOUCH_BEGIN ||
+             event.type() == Clutter.EventType.BUTTON_PRESS))
+            this.menu.toggle();
 
-        this.favourites_menu_button.add_child(this.favourites_menu_icon);
-        this.add_child(this.favourites_menu_button);
-
-        this._display_favourites();
+        return Clutter.EVENT_PROPAGATE;
     }
-    
-    _display_favourites() {
+
+    _display_windows() {
+        // destroy old icons
+        this.ws_button.destroy_all_children();
+
         // destroy old menu items
         if (this.menu) {
             this.menu.removeAll();
         }
-        
-        // create favorites items
-        for (const favourite of AppFavorites.getAppFavorites().getFavorites()) {
-            this.item = new PopupMenu.PopupImageMenuItem(favourite.get_name(), favourite.get_icon());
-            this.item.connect('activate', () => favourite.open_new_window(-1));
-            this.menu.addMenuItem(this.item);
+
+        // create window items
+        for (const window of this.ws.list_windows()) {
+            let window_app = this.window_tracker.get_window_app(window);
+
+            this.ws_button.add_child(window_app.create_icon_texture(16));
+            
+            let item = new PopupMenu.PopupImageMenuItem(window_app.get_name(), window_app.get_icon());
+            item.connect('activate', () => window_app.activate());
+            this.menu.addMenuItem(item);
         }
     }
     
-    // remove signals, destroy workspaces bar
     _destroy() {
-        if (this.favourites_changed_connection) {
-            AppFavorites.getAppFavorites().disconnect(this.favourites_changed_connection);
+        if (this.windows_changed) {
+            this.window_tracker.disconnect(this.windows_changed);
         }
         super.destroy();
     }
 });
-    
+
+var WindowButton = GObject.registerClass(
+class WindowButton extends St.Icon {
+    _init() { 
+        super._init({visible: true, reactive: true, can_focus: true, track_hover: true});
+    }
+});
 
 class Extension {
     constructor(uuid) {
@@ -123,25 +128,17 @@ class Extension {
     }
 
     enable() {
-        Main.panel.statusArea['activities'].visible = false;
-        Main.panel.statusArea['appMenu'].visible = false;
+        Actions.init();
 
-        this._app_grid_button = new AppGridButton();
-        Main.panel.addToStatusArea('app-grid-button', this._app_grid_button, 0 , 'left');
-
-        this._favourites_menu = new FavouritesMenu();
-        Main.panel.addToStatusArea('favourites-menu', this._favourites_menu, 3, 'left');
+        this.workspace_button = new WorkspaceButton(1);
+        Main.panel.addToStatusArea('workspace-button', this.workspace_button, 2, 'left');
     }
 
     disable() {
-        Main.panel.statusArea['activities'].visible = true;
-        Main.panel.statusArea['appMenu'].visible = true;
+        Actions.destroy();
 
-        this._app_grid_button.destroy();
-        this._app_grid_button = null;
-
-        this._favourites_menu.destroy();
-        this._favourites_menu = null;
+        this.workspace_button.destroy();
+        this.workspace_button = null;
     }
 }
 
