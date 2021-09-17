@@ -93,11 +93,13 @@ class WorkspaceButton extends PanelMenu.Button {
             this.menu.removeAll();
         }
 
+        // sort the window list by open order
+
         // create window items
         for (const window of this.ws.list_windows()) {
             let window_app = this.window_tracker.get_window_app(window);
 
-            this.ws_button.add_child(window_app.create_icon_texture(16));
+            this.ws_button.add_child(new WindowButton(window_app));
             
             let item = new PopupMenu.PopupImageMenuItem(window_app.get_name(), window_app.get_icon());
             item.connect('activate', () => window_app.activate());
@@ -115,8 +117,12 @@ class WorkspaceButton extends PanelMenu.Button {
 
 var WindowButton = GObject.registerClass(
 class WindowButton extends St.Icon {
-    _init() { 
+    _init(app) { 
         super._init({visible: true, reactive: true, can_focus: true, track_hover: true});
+
+        this.app = app;
+        this.style_class = 'system-status-icon';
+        this.gicon = app.get_icon();
     }
 });
 
