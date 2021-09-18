@@ -47,15 +47,23 @@ class WorkspaceButton extends PanelMenu.Button {
         this.ws = WM.get_workspace_by_index(workspace_index);
         this.window_tracker = Shell.WindowTracker.get_default();
 
-        for (const window of this.ws.list_windows()) {
-            
-            let window_app = this.window_tracker.get_window_app(window);
-            this.ws_button.add_child(new WindowButton(window_app));
-            
-            let item = new PopupMenu.PopupImageMenuItem(window_app.get_name(), window_app.get_icon());
-            item.connect('activate', () => window_app.activate());
-            this.menu.addMenuItem(item);
-        }  
+        if(this.ws.list_windows().length == 0) {
+            this.ws_button.add_child(new St.Icon({
+                icon_name: 'list-add-symbolic', 
+                style_class: 'system-status-icon'
+            }));
+        } else {
+            // Need to reverse the list so the icons are in the correct order
+            for (const window of this.ws.list_windows().reverse()) {
+                
+                let window_app = this.window_tracker.get_window_app(window);
+                this.ws_button.add_child(new WindowButton(window_app));
+                
+                let item = new PopupMenu.PopupImageMenuItem(window_app.get_name(), window_app.get_icon());
+                item.connect('activate', () => window_app.activate());
+                this.menu.addMenuItem(item);
+            }
+        }
     }
 
     vfunc_event(event) {
@@ -125,7 +133,8 @@ this.display_workspaces = function() {
     this.ws_count = WM.get_n_workspaces();
     this.active_ws_index = WM.get_active_workspace_index();
 
-    for (let ws_index = 0; ws_index < this.ws_count; ++ws_index) {
+    // Need to go reverse so the workspaces are in the right order
+    for (let ws_index = this.ws_count-1; ws_index >= 0; --ws_index) {
         let workspace_button = new WorkspaceButton(ws_index);
         this.ws_buttons.push(workspace_button);
         Main.panel.addToStatusArea('workspace-' + ws_index + '-button', workspace_button, 3, 'left');
